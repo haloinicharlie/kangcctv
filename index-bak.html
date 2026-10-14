@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KangCCTV - CCTV Bekasi Aktif</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #0d1117; 
+            color: #c9d1d9; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        h1 { 
+            text-align: center; 
+            color: #58a6ff; 
+            margin-bottom: 10px; 
+        }
+        .note { 
+            text-align: center; 
+            color: #8b949e; 
+            font-size: 0.9em; 
+            margin: 10px 0 20px; 
+        }
+        .controls { 
+            text-align: center; 
+            margin-bottom: 20px; 
+        }
+        button { 
+            background: #238636; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 1em; 
+        }
+        button:hover { background: #2ea043; }
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+            gap: 20px; 
+            max-width: 1400px; 
+            margin: 0 auto; 
+        }
+        .thumbnail { 
+            cursor: pointer; 
+            border: 1px solid #30363d; 
+            border-radius: 10px; 
+            overflow: hidden; 
+            background: #161b22; 
+            transition: all 0.2s; 
+        }
+        .thumbnail:hover { 
+            transform: translateY(-5px); 
+            box-shadow: 0 10px 20px rgba(88,166,255,0.2); 
+        }
+        .thumbnail img { 
+            width: 100%; 
+            height: 140px; 
+            object-fit: cover; 
+            background: #000 url('https://placehold.co/220x140/161b22/c9d1d9?text=Loading...') center/cover; 
+        }
+        .thumbnail p { 
+            margin: 10px; 
+            text-align: center; 
+            font-weight: bold; 
+            font-size: 0.95em; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+        }
+        .loading { 
+            text-align: center; 
+            font-size: 1.2em; 
+            margin: 30px; 
+            color: #8b949e; 
+        }
+        .info { 
+            text-align: center; 
+            color: #8b949e; 
+            margin: 20px 0; 
+        }
+        /* Modal */
+        .modal { 
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
+            left: 0; 
+            top: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(0,0,0,0.9); 
+        }
+        .modal-content { 
+            background: #0d1117; 
+            margin: 5% auto; 
+            padding: 20px; 
+            border: 1px solid #30363d; 
+            width: 85%; 
+            max-width: 900px; 
+            border-radius: 10px; 
+        }
+        .close { 
+            color: #8b949e; 
+            float: right; 
+            font-size: 36px; 
+            font-weight: bold; 
+            cursor: pointer; 
+        }
+        .close:hover { color: #c9d1d9; }
+        video { width: 100%; background: #000; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+    <h1>KangCCTV - CCTV Kota Bekasi (Hanya yang Aktif)</h1>
+    <p class="note">
+        Catatan: Streaming paling lancar di <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong>. 
+        Browser lain (seperti Zed/Firefox) mungkin mengalami kendala karena kompatibilitas HLS.
+    </p>
+
+    <div class="controls">
+        <button onclick="refreshCCTV()">Refresh Daftar CCTV</button>
+    </div>
+
+    <div class="loading" id="loading">Sedang memeriksa CCTV yang aktif...</div>
+    <div class="info" id="info"></div>
+    <div class="grid" id="cctv-grid"></div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title" style="color:#58a6ff; margin-top:0;"></h2>
+            <video id="video-player" controls autoplay style="width:100%;"></video>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'https://eofficev2.bekasikota.go.id/backupcctv/m3/';
+
+        const cctvList = [
+            { value: "Depan_Anugrah_Motor.m3u8", name: "Depan Anugrah Motor" },
+            { value: "Depan_FTL_Fitness.m3u8", name: "Depan FTL Fitness" },
+            { value: "Depan_NGOPIBAH.m3u8", name: "Depan NGOPIBAH" },
+            { value: "Depan_SMP_Strada_Budi_luhur.m3u8", name: "Depan SMP Strada Budi Luhur" },
+            { value: "Dishub_1001_.m3u8", name: "Dishub 1001" },
+            { value: "Dishub_2101_.m3u8", name: "Dishub 2101" },
+            { value: "Dishub_5301_.m3u8", name: "Dishub 5301" },
+            { value: "Dishub_5401_.m3u8", name: "Dishub 5401" },
+            { value: "Dishub_5601_.m3u8", name: "Dishub 5601" },
+            { value: "Dishub_601_.m3u8", name: "Dishub 601" },
+            { value: "Dishub_6301_.m3u8", name: "Dishub 6301" },
+            { value: "Dishub_7601_.m3u8", name: "Dishub 7601" },
+            { value: "Dishub_Bambu_Kuning_1_.m3u8", name: "Dishub Bambu Kuning 1" },
+            { value: "Dishub_Halte_TP_010_Kranji_.m3u8", name: "Dishub Halte TP 010 Kranji" },
+            { value: "Dishub_Halte_TP_010_Kranji_1.m3u8", name: "Dishub Halte TP 010 Kranji 1" },
+            { value: "Dishub_Islamic_center_1_.m3u8", name: "Dishub Islamic Center 1" },
+            { value: "Dishub_Pintu_masuk_Terminal_1_.m3u8", name: "Dishub Pintu Masuk Terminal 1" },
+            { value: "Dishub_Pintu_masuk_Terminal_2_.m3u8", name: "Dishub Pintu Masuk Terminal 2" },
+            { value: "Dishub_Rawa_tembaga_1_.m3u8", name: "Dishub Rawa Tembaga 1" },
+            { value: "Dishub_Simpang_Poncol_1_.m3u8", name: "Dishub Simpang Poncol 1" },
+            { value: "Dishub_Simpang_Poncol_2_.m3u8", name: "Dishub Simpang Poncol 2" },
+            { value: "Dishub_Stadion_2atriot_1_.m3u8", name: "Dishub Stadion Patriot 1" },
+            { value: "Dishub_Stadion_Patriot_2_.m3u8", name: "Dishub Stadion Patriot 2" },
+            { value: "Dishub_Staiun_Bekasi_2_.m3u8", name: "Dishub Stasiun Bekasi 2" },
+            { value: "Dishub_Terminal_sisi_Selatan_2_.m3u8", name: "Dishub Terminal Sisi Selatan 2" },
+            { value: "Flyover_Cipendawa.m3u8", name: "Flyover Cipendawa" },
+            { value: "KFC_DEKAT_TAMAN_CUT_MUTIA.m3u8", name: "KFC Dekat Taman Cut Mutia" },
+            { value: "PT_Fajar_Mas_Murni.m3u8", name: "PT Fajar Mas Murni" },
+            { value: "Perempatan_Caman.m3u8", name: "Perempatan Caman" },
+            { value: "Perempatan_Rawa_Semut.m3u8", name: "Perempatan Rawa Semut" },
+            { value: "Putaran_sumber_Arta.m3u8", name: "Putaran Sumber Arta" },
+            { value: "Samping_RS_Mitra_Keluarga.m3u8", name: "Samping RS Mitra Keluarga" },
+            { value: "Samping_RS_Primaya_Bekasi.m3u8", name: "Samping RS Primaya Bekasi" },
+            { value: "Seberang_Yonif_202.m3u8", name: "Seberang Yonif 202" },
+            { value: "Taman_Kelurahan_Jakasampura.m3u8", name: "Taman Kelurahan Jakasampura" },
+            { value: "Universitas_Bani_Saleh.m3u8", name: "Universitas Bani Saleh" },
+            { value: "alun_alun_bekasi.m3u8", name: "Alun-alun Bekasi" },
+            { value: "area_cfd.m3u8", name: "Area CFD" },
+            { value: "bendungan_prisdo.m3u8", name: "Bendungan Prisdo" },
+            { value: "dprd.m3u8", name: "DPRD" },
+            { value: "ex_depan_disnaker.m3u8", name: "Ex Depan Disnaker" },
+            { value: "islamic_center.m3u8", name: "Islamic Center" },
+            { value: "pertigaan_cevest.m3u8", name: "Pertigaan Cevest" },
+            { value: "proyek_bekasi.m3u8", name: "Proyek Bekasi" },
+            { value: "rawa_tembaga.m3u8", name: "Rawa Tembaga" },
+            { value: "rs_bela.m3u8", name: "RS Bela" },
+            { value: "stasiun_bekasi.m3u8", name: "Stasiun Bekasi" },
+            { value: "terminal_bekasi.m3u8", name: "Terminal Bekasi" },
+        ];
+
+        const grid = document.getElementById('cctv-grid');
+        const loading = document.getElementById('loading');
+        const info = document.getElementById('info');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const videoPlayer = document.getElementById('video-player');
+
+        let activeCount = 0;
+        let checkedCount = 0;
+
+        function checkStreamActive(url, callback) {
+            const testVideo = document.createElement('video');
+            testVideo.muted = true;
+            testVideo.preload = 'auto';
+            testVideo.src = url;
+            const timeout = setTimeout(() => { callback(false); testVideo.remove(); }, 12000);
+
+            testVideo.onloadeddata = () => { clearTimeout(timeout); callback(true); testVideo.remove(); };
+            testVideo.onerror = () => { clearTimeout(timeout); callback(false); testVideo.remove(); };
+            testVideo.load();
+        }
+
+        function addThumbnail(cctv, url) {
+            activeCount++;
+            const div = document.createElement('div');
+            div.className = 'thumbnail';
+            div.innerHTML = `
+                <img src="https://placehold.co/220x140/161b22/c9d1d9?text=${encodeURIComponent(cctv.name.substring(0,20))}" 
+                     onerror="this.src='https://placehold.co/220x140/161b22/8b949e?text=Offline';" 
+                     alt="${cctv.name}">
+                <p>${cctv.name}</p>
+            `;
+            div.onclick = () => openModal(cctv.name, url);
+            grid.appendChild(div);
+        }
+
+        function loadCCTV() {
+            grid.innerHTML = ''; // clear grid
+            loading.style.display = 'block';
+            loading.textContent = 'Sedang memeriksa CCTV yang aktif...';
+            info.textContent = '';
+            activeCount = 0;
+            checkedCount = 0;
+
+            cctvList.forEach(cctv => {
+                const fullUrl = BASE_URL + cctv.value;
+                checkStreamActive(fullUrl, isActive => {
+                    if (isActive) addThumbnail(cctv, fullUrl);
+                    checkedCount++;
+                    if (checkedCount === cctvList.length) {
+                        loading.style.display = 'none';
+                        info.textContent = `Menampilkan ${activeCount} CCTV aktif dari ${cctvList.length}`;
+                    }
+                });
+            });
+        }
+
+        function openModal(name, url) {
+            modal.style.display = 'block';
+            modalTitle.textContent = name;
+            videoPlayer.muted = false;
+
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    xhrSetup: (xhr) => {
+                        xhr.setRequestHeader('Referer', 'https://bekasikota.go.id/');
+                        xhr.setRequestHeader('Origin', 'https://bekasikota.go.id/');
+                    },
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    fragLoadingTimeOut: 20000,
+                    manifestLoadingTimeOut: 20000
+                });
+                hls.loadSource(url);
+                hls.attachMedia(videoPlayer);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => videoPlayer.play().catch(console.log));
+            } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                videoPlayer.src = url;
+                videoPlayer.play().catch(console.log);
+            }
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            videoPlayer.pause();
+            videoPlayer.src = '';
+        }
+
+        function refreshCCTV() {
+            loadCCTV();
+        }
+
+        window.onclick = e => { if (e.target === modal) closeModal(); };
+
+        // Load pertama kali
+        loadCCTV();
+    </script>
+</body>
+</html>
